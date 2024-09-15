@@ -1,0 +1,84 @@
+﻿<Window x:Class="esptool_cs.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:esptool_cs"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="320" Width="500"
+        Style="{StaticResource DefaultFont}" Loaded="Window_Loaded" ContentRendered="Window_ContentRendered">
+    <Window.DataContext>
+        <local:MainWindowViewModel />
+    </Window.DataContext>
+    <Window.Resources>
+    </Window.Resources>
+    <Grid>
+        <Grid.Background>
+            <SolidColorBrush Color="{DynamicResource {x:Static SystemColors.ControlColorKey}}"/>
+        </Grid.Background>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="10px"/>
+            <RowDefinition Height="25px"/>
+            <RowDefinition Height="10px"/>
+            <RowDefinition Height="25px"/>
+            <RowDefinition Height="10px"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="5px"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Grid Grid.Row="0"/>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="130px"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="100px"/>
+            </Grid.ColumnDefinitions>
+            <Label Grid.Column="0" Content="Firmwareフォルダ" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <TextBox Grid.Column="1" Margin="10,0" />
+            <Button Grid.Column="2" Content="選択" Margin="10,1,20,1"/>
+        </Grid>
+        <Grid Grid.Row="2"/>
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="130px"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="100px"/>
+            </Grid.ColumnDefinitions>
+            <Label Grid.Column="0" Content="COMポート" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            <ComboBox Grid.Column="1" Margin="10,0" ItemsSource="{Binding ComPorts}" SelectedIndex="{Binding ComPortsSelectedIndex.Value}" DisplayMemberPath="DeviceName"></ComboBox>
+            <Button Grid.Column="2" Content="更新" Command="{Binding OnUpdateComPorts}" Margin="10,1,20,1"/>
+        </Grid>
+        <Grid Grid.Row="4"/>
+        <Grid Grid.Row="5">
+            <TabControl SelectionChanged="TabControl_SelectionChanged">
+                <TabItem Header="Firmware Writer">
+                    <Button Content="WRITE FIRMWARE" Command="{Binding OnFirmwareWrite}" FontSize="20" Height="50px" Margin="20,10"/>
+                </TabItem>
+                <TabItem Header="Manual Control">
+                    <WrapPanel Orientation="Horizontal">
+                        <WrapPanel.Resources>
+                            <Style TargetType="{x:Type Button}">
+                                <Setter Property="Margin" Value="10,2,0,2"/>
+                                <Setter Property="Padding" Value="10,1"/>
+                            </Style>
+                        </WrapPanel.Resources>
+                        <Button Content="Button1"/>
+                        <Button Content="Button2"/>
+                        <Button Content="Button3"/>
+                        <Button Content="Button4"/>
+                        <Button Content="Button5"/>
+                        <Button Content="Button6"/>
+                        <Button Content="Button7"/>
+                        <Button Content="Button1"/>
+                        <Button Content="Button2"/>
+                        <Button Content="Button3"/>
+                    </WrapPanel>
+                </TabItem>
+            </TabControl>
+        </Grid>
+        <Grid Grid.Row="6"/>
+        <Grid Grid.Row="7">
+            <TextBox Text="{Binding Log.Value}"/>
+        </Grid>
+    </Grid>
+</Window>
