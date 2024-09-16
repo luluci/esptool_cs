@@ -88,16 +88,23 @@ namespace esptool_cs
                     //
                     if (!is_open)
                     {
-                        Log.Value += "Bootloader起動に失敗";
+                        Log.Value += Protocol.Error;
+                        Log.Value += "\n";
                     }
                     else
                     {
                         //
-                        await Protocol.Send(EspBootloader.Command.READ_REG);
-                        Log.Value += Protocol.Error;
-                        //
-                        Log.Value += $"MAC addr: {Protocol.EfuseMacAddr:X12}\n";
-                        Log.Value += $"CHIP ID : {Protocol.ChipId:X4}\n";
+                        var is_init = await Protocol.Send(EspBootloader.Command.READ_REG);
+                        if (is_init)
+                        {
+                            Log.Value += $"MAC addr: {Protocol.EfuseMacAddr:X12}\n";
+                            Log.Value += $"CHIP ID : {Protocol.ChipId:X4}\n";
+                        }
+                        else
+                        {
+                            Log.Value += Protocol.Error;
+                            Log.Value += "\n";
+                        }
                     }
                 }
             }

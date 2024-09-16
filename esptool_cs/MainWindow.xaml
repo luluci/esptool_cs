@@ -78,7 +78,11 @@
         </Grid>
         <Grid Grid.Row="6"/>
         <Grid Grid.Row="7">
-            <TextBox Text="{Binding Log.Value}"/>
+            <Border Margin="1">
+                <ScrollViewer>
+                    <TextBox Text="{Binding Log.Value}"/>
+                </ScrollViewer>
+            </Border>
         </Grid>
     </Grid>
 </Window>

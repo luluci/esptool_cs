@@ -73,6 +73,12 @@ namespace esptool_cs.EspBootloader
                 await reciever.Run();
             }
 
+            // 
+            if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
+            {
+                Error = "Bootloader起動に失敗";
+            }
+
             Header = respAnlyzr.Header;
 
             return respAnlyzr.Result == Serial.RecieveResult.Match;
@@ -84,7 +90,7 @@ namespace esptool_cs.EspBootloader
             serialPort.Close();
         }
 
-        public async Task Send(Command cmd)
+        public async Task<bool> Send(Command cmd)
         {
             // CommandPacket作成、送信
             respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
@@ -94,6 +100,11 @@ namespace esptool_cs.EspBootloader
             // ResponsePacket待機
             await reciever.Run();
             reciever.Discard();
+            if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
+            {
+                Error = "初期通信(SYNC)に失敗。";
+                return false;
+            }
 
             await Task.Delay(100);
 
@@ -102,20 +113,28 @@ namespace esptool_cs.EspBootloader
             commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_0_REG);
             serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
             await reciever.Run();
+            reciever.Discard();
             if (respAnlyzr.HasError)
             {
                 Error = respAnlyzr.Error;
-                return;
+                return false;
             }
-            reciever.Discard();
             EfuseMacAddr = respAnlyzr.Packet.Value;
 
             respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
             commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_1_REG);
             serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
             await reciever.Run();
+            reciever.Discard();
+            if (respAnlyzr.HasError)
+            {
+                Error = respAnlyzr.Error;
+                return false;
+            }
             EfuseMacAddr |= ((UInt64)(respAnlyzr.Packet.Value & 0x0000FFFF) << 32);
             ChipId = (UInt16)respAnlyzr.Packet.Value;
+
+            return true;
         }
     }
 }
