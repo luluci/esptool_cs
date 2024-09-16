@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:esptool_cs"
         mc:Ignorable="d"
-        Title="MainWindow" Height="320" Width="500"
+        Title="MainWindow" Height="350" Width="500"
         Style="{StaticResource DefaultFont}" Loaded="Window_Loaded" ContentRendered="Window_ContentRendered">
     <Window.DataContext>
         <local:MainWindowViewModel />

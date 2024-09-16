@@ -83,6 +83,9 @@ namespace esptool_cs
                 {
                     var port = ComPorts[ComPortsSelectedIndex.Value];
                     await Protocol.Open(port.ComPort);
+                    //
+                    Log.Value += Protocol.Header;
+                    //
                     await Protocol.Send(EspBootloader.Command.READ_REG);
                 }
             }

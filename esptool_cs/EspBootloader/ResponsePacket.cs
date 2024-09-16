@@ -39,16 +39,30 @@ namespace esptool_cs.EspBootloader
     internal class ResponseAnalyzer : Serial.IAnalyzer
     {
         public ResponsePacket Packet { get; set; }
+        StringBuilder headerBuffer;
+        public string Header { get; set; }
 
         // 解析情報
+        // 解析モード
+        public enum Mode
+        {
+            Header,     // Bootloader接続時に自動で送られてくる情報
+            Protocol,   // Protocolでのやりとり
+        }
+        Mode mode;
         // 受信状況
         enum RecvStateWaitFor
         {
+            //
+            Header,
+            //
+            StartByte,
             Direction,
             Command,
             Size,
             Value,
             Data,
+            StopByte,
 
             //
             Timeout,    // 不正データ受信でタイムアウトするまで読み捨てる
@@ -62,19 +76,82 @@ namespace esptool_cs.EspBootloader
             // 受信データバッファ
             Packet = new ResponsePacket();
 
-            Init();
+            Init(Mode.Header);
         }
 
-        public void Init()
+        public void Init(Mode mode_)
         {
-            // 受信待ち状態初期化:Direction待機状態
-            waitFor = RecvStateWaitFor.Direction;
+            mode = mode_;
             recvCount = 0;
-            //
-            Packet.Init();
+
+            switch (mode)
+            {
+                case Mode.Protocol:
+                    // 受信待ち状態初期化:Direction待機状態
+                    waitFor = RecvStateWaitFor.StartByte;
+                    //
+                    Packet.Init();
+                    break;
+
+                case Mode.Header:
+                default:
+                    waitFor = RecvStateWaitFor.Header;
+                    headerBuffer = new StringBuilder();
+                    break;
+            }
         }
 
         public bool Analyze(ref RecvInfo rx)
+        {
+            switch (mode)
+            {
+                case Mode.Header:
+                    return AnalyzeHeader(ref rx);
+
+                case Mode.Protocol:
+                    return AnalyzeProtocol(ref rx);
+
+                default:
+                    return true;
+            }
+        }
+
+        public bool CheckResult(ref RecvInfo rx)
+        {
+            switch (rx.Type)
+            {
+                case RxDataType.Match:
+                    // Packet受信正常終了
+                    break;
+            }
+
+            switch (mode)
+            {
+                case Mode.Header:
+                    Header = headerBuffer.ToString();
+                    break;
+
+                default:
+                    break;
+            }
+
+            // 受信情報初期化
+            //Init(mode);
+
+            return false;
+        }
+
+        private bool AnalyzeHeader(ref RecvInfo rx)
+        {
+            // タイムアウトするまで全部受信する
+            //var str = BitConverter.ToString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
+            var str = System.Text.Encoding.UTF8.GetString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
+            headerBuffer.Append(str);
+
+            return false;
+        }
+
+        private bool AnalyzeProtocol(ref RecvInfo rx)
         {
             bool recieved = false;
 
@@ -85,11 +162,25 @@ namespace esptool_cs.EspBootloader
 
                 switch (waitFor)
                 {
+                    case RecvStateWaitFor.StartByte:
+                        // StartByteチェック
+                        if (data == 0xC0)
+                        {
+                            waitFor = RecvStateWaitFor.Direction;
+                        }
+                        break;
+
                     case RecvStateWaitFor.Direction:
                         // Directionチェック
                         if (data == 0x01)
                         {
                             waitFor = RecvStateWaitFor.Command;
+                        }
+                        else
+                        {
+                            // 未定義Commandを受信した
+                            // 一連のシーケンスは無効にする
+                            waitFor = RecvStateWaitFor.Timeout;
                         }
                         break;
 
@@ -122,7 +213,7 @@ namespace esptool_cs.EspBootloader
 
                     case RecvStateWaitFor.Value:
                         // Value情報取り込み
-                        Packet.Value |= (UInt32)(data << (recvCount*8));
+                        Packet.Value |= (UInt32)(data << (recvCount * 8));
                         recvCount++;
                         // 4バイト受信したらOK
                         if (recvCount >= 4)
@@ -139,6 +230,14 @@ namespace esptool_cs.EspBootloader
                         // Sizeで示された分だけDataを受信する
                         if (recvCount >= Packet.Size)
                         {
+                            waitFor = RecvStateWaitFor.StopByte;
+                        }
+                        break;
+
+                    case RecvStateWaitFor.StopByte:
+                        // StopByteチェック
+                        if (data == 0xC0)
+                        {
                             // 1パケット受信完了
                             recieved = true;
                         }
@@ -154,21 +253,6 @@ namespace esptool_cs.EspBootloader
             rx.RxBuffTgtPos = pos;
 
             return recieved;
-        }
-
-        public bool CheckResult(ref RecvInfo rx)
-        {
-            switch (rx.Type)
-            {
-                case RxDataType.Match:
-                    // Packet受信正常終了
-                    break;
-            }
-
-            // 受信情報初期化
-            Init();
-
-            return false;
         }
     }
 }

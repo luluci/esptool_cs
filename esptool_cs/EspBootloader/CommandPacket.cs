@@ -12,11 +12,12 @@ namespace esptool_cs.EspBootloader
 
         enum PacketOffset
         {
-            Direction = 0,
-            Command = 1,
-            Size = 2,
-            Checksum = 5,
-            Data = 8,
+            StartByte = 0,
+            Direction = 1,
+            Command = 2,
+            Size = 3,
+            Checksum = 6,
+            Data = 9,
         }
 
         // Cmd
@@ -26,6 +27,13 @@ namespace esptool_cs.EspBootloader
         // Value
         public UInt32 Checksum { get; set; }
         // Data
+        public static readonly byte[] SyncData = {
+            0x07, 0x07, 0x12, 0x20,
+            0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
+            0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
+            0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55, 0x55,
+            0x55, 0x55
+        };
 
         // Dataは送信用バッファに直接展開する
         public byte[] Packet { get; set; }
@@ -46,6 +54,16 @@ namespace esptool_cs.EspBootloader
             Checksum = 0;
         }
 
+        public void SetSync()
+        {
+            // SYNC
+            Command = Command.SYNC;
+            Size = 36;
+            Checksum = 0;
+            // Packet作成
+            MakePacket(SyncData, SyncData.Length);
+        }
+
         public void SetReadReg(UInt32 addr)
         {
             // READ_REG
@@ -56,38 +74,64 @@ namespace esptool_cs.EspBootloader
             MakePacket(addr);
         }
 
-        public void MakePacket(UInt32 data)
+        public void MakePacket(byte[] data, int length)
         {
-            MakePacket();
-            MakePacket((int)PacketOffset.Data, data);
-            //
-            PacketLength = (int)PacketOffset.Data + sizeof(UInt32);
+            // Base作成
+            MakePacketImpl();
+            // Data作成
+            MakePacketImpl((int)PacketOffset.Data, data, length);
+            PacketLength = (int)PacketOffset.Data + length;
+            // StopByte作成
+            MakePacketImplStopByte(PacketLength);
+            PacketLength++;
         }
 
-        public void MakePacket()
+        public void MakePacket(UInt32 data)
+        {
+            // Base作成
+            MakePacketImpl();
+            // Data作成
+            MakePacketImpl((int)PacketOffset.Data, data);
+            PacketLength = (int)PacketOffset.Data + sizeof(UInt32);
+            // StopByte作成
+            MakePacketImplStopByte(PacketLength);
+            PacketLength++;
+        }
+
+        public void MakePacketImplStopByte(int offset)
+        {
+            Packet[offset] = 0xC0;
+        }
+
+        public void MakePacketImpl()
         {
             // Data以外をPacketバッファに展開する
 
             // 
-            Packet[0] = 0x00;
-            Packet[1] = (byte)Command;
+            Packet[(int)PacketOffset.StartByte] = 0xC0;
+            Packet[(int)PacketOffset.Direction] = 0x00;
+            Packet[(int)PacketOffset.Command] = (byte)Command;
             // Size
-            MakePacket((int)PacketOffset.Size, Size);
+            MakePacketImpl((int)PacketOffset.Size, Size);
             // Checksum
-            MakePacket((int)PacketOffset.Checksum, Checksum);
+            MakePacketImpl((int)PacketOffset.Checksum, Checksum);
         }
 
-        public void MakePacket(int packetOffset, UInt16 data)
+        public void MakePacketImpl(int packetOffset, UInt16 data)
         {
             Packet[packetOffset + 0] = (byte)(data & 0x00FF);
             Packet[packetOffset + 1] = (byte)((data & 0xFF00) >> 8);
         }
-        public void MakePacket(int packetOffset, UInt32 data)
+        public void MakePacketImpl(int packetOffset, UInt32 data)
         {
             Packet[packetOffset + 0] = (byte)(data & 0x000000FF);
             Packet[packetOffset + 1] = (byte)((data & 0x0000FF00) >> 8);
             Packet[packetOffset + 2] = (byte)((data & 0x00FF0000) >> 16);
             Packet[packetOffset + 3] = (byte)((data & 0xFF000000) >> 24);
+        }
+        public void MakePacketImpl(int packetOffset, byte[] data, int len)
+        {
+            Buffer.BlockCopy(data, 0, Packet, packetOffset, len);
         }
     }
 }

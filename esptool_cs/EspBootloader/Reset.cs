@@ -80,6 +80,7 @@ namespace esptool_cs.EspBootloader
 
             // (RTS,DTR)=(1,1)でリセット解除して通常モードで起動
             serial.RtsEnable = false;
+            serial.DtrEnable = false;
         }
         public static async Task RunBootloader(SerialPort serial)
         {

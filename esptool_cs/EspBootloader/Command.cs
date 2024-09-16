@@ -11,6 +11,8 @@ namespace esptool_cs.EspBootloader
         None = 0,
         FLASH_BEGIN = 0x02,
 
+        SYNC = 0x08,
+
         READ_REG = 0x0A,
     }
     internal static class CommandHelper

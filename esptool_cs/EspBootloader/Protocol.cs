@@ -18,6 +18,8 @@ namespace esptool_cs.EspBootloader
         ResponseAnalyzer respAnlyzr;
         Serial.Reciever<ResponseAnalyzer> reciever;
 
+        public string Header { get; set; }
+
         public Protocol()
         {
             var cmd = CommandHelper.CommandConvertTable[0];
@@ -40,12 +42,10 @@ namespace esptool_cs.EspBootloader
             serialPort.Open();
             // Bootloader起動
             await Reset.RunBootloader(serialPort);
-            //
+            // Header取得
+            respAnlyzr.Init(ResponseAnalyzer.Mode.Header);
             await reciever.Run();
-            await reciever.Run();
-            await reciever.Run();
-            await reciever.Run();
-            await reciever.Run();
+            Header = respAnlyzr.Header;
         }
 
         public async Task Close()
@@ -57,7 +57,9 @@ namespace esptool_cs.EspBootloader
         public async Task Send(Command cmd)
         {
             // CommandPacket作成、送信
-            commandPacket.SetReadReg(0x00);
+            respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
+            //commandPacket.SetReadReg(0x00);
+            commandPacket.SetSync();
             serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
             // ResponsePacket待機
             await reciever.Run();
