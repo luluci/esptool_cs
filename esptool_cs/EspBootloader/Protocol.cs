@@ -7,6 +7,12 @@ using System.Threading.Tasks;
 
 namespace esptool_cs.EspBootloader
 {
+    enum EspRegMap : UInt32
+    {
+        EFUSE_RD_MAC_SPI_SYS_0_REG = 0x0044,
+        EFUSE_RD_MAC_SPI_SYS_1_REG = 0x0048,
+    }
+
     internal class Protocol
     {
         //
@@ -18,7 +24,12 @@ namespace esptool_cs.EspBootloader
         ResponseAnalyzer respAnlyzr;
         Serial.Reciever<ResponseAnalyzer> reciever;
 
+        // ESP32情報
+        public UInt64 EfuseMacAddr;
+        public UInt16 ChipId;
+
         public string Header { get; set; }
+        public string Error { get; set; }
 
         public Protocol()
         {
@@ -33,6 +44,8 @@ namespace esptool_cs.EspBootloader
             // 受信解析
             reciever = new Serial.Reciever<ResponseAnalyzer>(serialPort, respAnlyzr);
 
+            //
+            EfuseMacAddr = 0;
         }
 
         public async Task Open(string port)
@@ -42,6 +55,7 @@ namespace esptool_cs.EspBootloader
             serialPort.Open();
             // Bootloader起動
             await Reset.RunBootloader(serialPort);
+
             // Header取得
             respAnlyzr.Init(ResponseAnalyzer.Mode.Header);
             await reciever.Run();
@@ -58,11 +72,34 @@ namespace esptool_cs.EspBootloader
         {
             // CommandPacket作成、送信
             respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
-            //commandPacket.SetReadReg(0x00);
+            // SYNC実行
             commandPacket.SetSync();
             serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
             // ResponsePacket待機
             await reciever.Run();
+            reciever.Discard();
+
+            await Task.Delay(100);
+
+            // Chip情報取得
+            respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
+            commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_0_REG);
+            serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
+            await reciever.Run();
+            if (respAnlyzr.HasError)
+            {
+                Error = respAnlyzr.Error;
+                return;
+            }
+            reciever.Discard();
+            EfuseMacAddr = respAnlyzr.Packet.Value;
+
+            respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
+            commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_1_REG);
+            serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
+            await reciever.Run();
+            EfuseMacAddr |= ((respAnlyzr.Packet.Value & 0x0000FFFF) << 16);
+            ChipId = (UInt16)respAnlyzr.Packet.Value;
         }
     }
 }

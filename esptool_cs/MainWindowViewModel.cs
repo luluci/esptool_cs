@@ -87,6 +87,10 @@ namespace esptool_cs
                     Log.Value += Protocol.Header;
                     //
                     await Protocol.Send(EspBootloader.Command.READ_REG);
+                    Log.Value += Protocol.Error;
+                    //
+                    Log.Value += $"MAC addr: {Protocol.EfuseMacAddr:X12}\n";
+                    Log.Value += $"CHIP ID : {Protocol.ChipId:X4}\n";
                 }
             }
             catch (Exception ex)

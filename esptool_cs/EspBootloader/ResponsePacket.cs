@@ -39,8 +39,12 @@ namespace esptool_cs.EspBootloader
     internal class ResponseAnalyzer : Serial.IAnalyzer
     {
         public ResponsePacket Packet { get; set; }
-        StringBuilder headerBuffer;
+        StringBuilder msgBuffer;
         public string Header { get; set; }
+        public string Error { get; set; }
+        public bool HasError { get; set; }
+        //
+        public RecieveResult Result {  get; set; }
 
         // 解析情報
         // 解析モード
@@ -55,6 +59,7 @@ namespace esptool_cs.EspBootloader
         {
             //
             Header,
+            HeaderDummyRead,//読み捨て
             //
             StartByte,
             Direction,
@@ -63,6 +68,7 @@ namespace esptool_cs.EspBootloader
             Value,
             Data,
             StopByte,
+            DummyRead,  //読み捨て
 
             //
             Timeout,    // 不正データ受信でタイムアウトするまで読み捨てる
@@ -83,6 +89,8 @@ namespace esptool_cs.EspBootloader
         {
             mode = mode_;
             recvCount = 0;
+            HasError = false;
+            msgBuffer = new StringBuilder();
 
             switch (mode)
             {
@@ -96,7 +104,6 @@ namespace esptool_cs.EspBootloader
                 case Mode.Header:
                 default:
                     waitFor = RecvStateWaitFor.Header;
-                    headerBuffer = new StringBuilder();
                     break;
             }
         }
@@ -118,9 +125,10 @@ namespace esptool_cs.EspBootloader
 
         public bool CheckResult(ref RecvInfo rx)
         {
-            switch (rx.Type)
+            Result = rx.Result;
+            switch (rx.Result)
             {
-                case RxDataType.Match:
+                case RecieveResult.Match:
                     // Packet受信正常終了
                     break;
             }
@@ -128,11 +136,16 @@ namespace esptool_cs.EspBootloader
             switch (mode)
             {
                 case Mode.Header:
-                    Header = headerBuffer.ToString();
+                    Header = msgBuffer.ToString();
                     break;
 
                 default:
                     break;
+            }
+
+            if (HasError)
+            {
+                Error = msgBuffer.ToString();
             }
 
             // 受信情報初期化
@@ -143,20 +156,47 @@ namespace esptool_cs.EspBootloader
 
         private bool AnalyzeHeader(ref RecvInfo rx)
         {
-            // タイムアウトするまで全部受信する
-            //var str = BitConverter.ToString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
-            var str = System.Text.Encoding.UTF8.GetString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
-            headerBuffer.Append(str);
+            bool recieved = false;
 
-            return false;
+            switch (waitFor)
+            {
+                case RecvStateWaitFor.Header:
+                    var str = System.Text.Encoding.UTF8.GetString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
+                    rx.RxBuffTgtPos = rx.RxBuffOffset;
+                    msgBuffer.Append(str);
+                    if (str.IndexOf("waiting for download") != -1)
+                    {
+                        waitFor = RecvStateWaitFor.HeaderDummyRead;
+                        recieved = true;
+                    }
+                    break;
+
+                case RecvStateWaitFor.HeaderDummyRead:
+                default:
+                    // タイムアウトするまで読み捨て
+                    break;
+            }
+
+            return recieved;
+            //return false;
         }
 
         private bool AnalyzeProtocol(ref RecvInfo rx)
         {
             bool recieved = false;
 
+            // エラーチェック
+            // 先頭が 0xC0 以外のときはエラーメッセージとみなす
+            if (rx.RxBuff[0] != 0xC0)
+            {
+                var str = System.Text.Encoding.UTF8.GetString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
+                msgBuffer.Append(str);
+                HasError = true;
+                return true;
+            }
+
             int pos;
-            for (pos = rx.RxBuffTgtPos; pos < rx.RxBuffOffset; pos++)
+            for (pos = rx.RxBuffTgtPos; !recieved && pos < rx.RxBuffOffset; pos++)
             {
                 var data = rx.RxBuff[pos];
 

@@ -11,7 +11,7 @@ using System.Threading.Tasks;
 
 namespace esptool_cs.Serial
 {
-    public enum RxDataType
+    public enum RecieveResult
     {
         Empty,
         Match,
@@ -22,7 +22,7 @@ namespace esptool_cs.Serial
     // 受信データ情報
     public class RecvInfo
     {
-        public RxDataType Type { get; set; }
+        public RecieveResult Result { get; set; }
         public const int BuffSize = 1024;
         public const int MatchBuffSize = 1024;
         public byte[] RxBuff { get; set; }
@@ -39,8 +39,18 @@ namespace esptool_cs.Serial
             IsRecieving = false;
         }
 
+        public void Init()
+        {
+            // 受信バッファはリセットして受信開始する
+            RxBuffOffset = 0;
+            RxBuffTgtPos = 0;
+            IsRecieving = false;
+        }
+
         public void Restart()
         {
+            // 受信バッファ残りを継続して解析を再開する
+            Result = RecieveResult.Empty;
             IsRecieving = false;
         }
     }
@@ -81,7 +91,7 @@ namespace esptool_cs.Serial
         bool HasRecieve;
 
         // 解析結果
-        RecvInfo RecvData;
+        public RecvInfo RecvData;
 
         public Reciever(SerialPort serial, T rxanlyzer) 
         {
@@ -101,7 +111,14 @@ namespace esptool_cs.Serial
             timeoutMode = TimeoutMode.Immediate;
         }
 
-        public async Task Run(TimeoutMode timeoutmode = TimeoutMode.Immediate)
+        public void Discard()
+        {
+            // 読み捨て処理
+            RecvData.Init();
+            var _ = serialPort.ReadExisting();
+        }
+
+        public async Task<RecieveResult> Run(TimeoutMode timeoutmode = TimeoutMode.Immediate)
         {
             // 通信プロトコル起動
             // Stop()するまでデータ受信やタイムアウト、それらに付随する処理を継続する。
@@ -130,6 +147,8 @@ namespace esptool_cs.Serial
             {
                 IsRunning = false;
             }
+
+            return RecvData.Result;
         }
 
         public void Stop()
@@ -166,7 +185,7 @@ namespace esptool_cs.Serial
                 if (cancel.IsCancellationRequested)
                 {
                     //throw new OperationCanceledException("Cancel Requested");
-                    RecvData.Type = RxDataType.Cancel;
+                    RecvData.Result = RecieveResult.Cancel;
                     return;
                 }
                 // Rx
@@ -189,7 +208,7 @@ namespace esptool_cs.Serial
             {
                 if (RxBeginTimer.WaitForMsec(RxTimeout) <= 0)
                 {
-                    RecvData.Type = RxDataType.Timeout;
+                    RecvData.Result = RecieveResult.Timeout;
                     return true;
                 }
             }
@@ -235,7 +254,7 @@ namespace esptool_cs.Serial
                     // 何かしらマッチしていたら通知
                     if (result)
                     {
-                        RecvData.Type = RxDataType.Match;
+                        RecvData.Result = RecieveResult.Match;
                         RecvData.TimeStamp = RxEndTimer.GetTime();
                         return true;
                     }
@@ -263,16 +282,16 @@ namespace esptool_cs.Serial
         public void CheckEvent()
         {
 
-            switch (RecvData.Type)
+            switch (RecvData.Result)
             {
-                case RxDataType.Cancel:
+                case RecieveResult.Cancel:
                     // Cancelにより通信終了
                     IsRunning = false;
                     break;
 
-                case RxDataType.Timeout:
+                case RecieveResult.Timeout:
                     // 受信タイムアウトによる受信シーケンス終了
-                case RxDataType.Match:
+                case RecieveResult.Match:
                     // 受信解析で定義したルールにマッチ
                     // 受信解析器に通知してポーリング終了をチェック
                     if (!rxAnlzr.CheckResult(ref RecvData))
