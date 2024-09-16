@@ -9,8 +9,11 @@ namespace esptool_cs.EspBootloader
 {
     enum EspRegMap : UInt32
     {
-        EFUSE_RD_MAC_SPI_SYS_0_REG = 0x0044,
-        EFUSE_RD_MAC_SPI_SYS_1_REG = 0x0048,
+        EFUSE_BASE = 0x60007000,
+        EFUSE_BLOCK1_ADDR = EFUSE_BASE + 0x0044,
+        EFUSE_BLOCK2_ADDR = EFUSE_BASE + 0x005C,
+        EFUSE_RD_MAC_SPI_SYS_0_REG = EFUSE_BASE + 0x0044,
+        EFUSE_RD_MAC_SPI_SYS_1_REG = EFUSE_BASE + 0x0048,
     }
 
     internal class Protocol
@@ -48,18 +51,31 @@ namespace esptool_cs.EspBootloader
             EfuseMacAddr = 0;
         }
 
-        public async Task Open(string port)
+        public async Task<bool> Open(string port)
         {
             // COMポートを開く
             serialPort.PortName = port;
             serialPort.Open();
-            // Bootloader起動
-            await Reset.RunBootloader(serialPort);
 
+            // USB-JTAG方式でBootloader起動トライ
+            await Reset.RunBootloaderUsbJtag(serialPort);
             // Header取得
             respAnlyzr.Init(ResponseAnalyzer.Mode.Header);
             await reciever.Run();
+
+            // タイムアウトが発生したらBootloader起動できていない
+            if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
+            {
+                // Classic方式でBootloader起動トライ
+                await Reset.RunBootloaderClassic(serialPort);
+                // Header取得
+                respAnlyzr.Init(ResponseAnalyzer.Mode.Header);
+                await reciever.Run();
+            }
+
             Header = respAnlyzr.Header;
+
+            return respAnlyzr.Result == Serial.RecieveResult.Match;
         }
 
         public async Task Close()
@@ -98,7 +114,7 @@ namespace esptool_cs.EspBootloader
             commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_1_REG);
             serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
             await reciever.Run();
-            EfuseMacAddr |= ((respAnlyzr.Packet.Value & 0x0000FFFF) << 16);
+            EfuseMacAddr |= ((UInt64)(respAnlyzr.Packet.Value & 0x0000FFFF) << 32);
             ChipId = (UInt16)respAnlyzr.Packet.Value;
         }
     }

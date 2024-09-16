@@ -82,15 +82,23 @@ namespace esptool_cs
                 if (ComPortsSelectedIndex.Value >= 0)
                 {
                     var port = ComPorts[ComPortsSelectedIndex.Value];
-                    await Protocol.Open(port.ComPort);
+                    var is_open = await Protocol.Open(port.ComPort);
                     //
                     Log.Value += Protocol.Header;
                     //
-                    await Protocol.Send(EspBootloader.Command.READ_REG);
-                    Log.Value += Protocol.Error;
-                    //
-                    Log.Value += $"MAC addr: {Protocol.EfuseMacAddr:X12}\n";
-                    Log.Value += $"CHIP ID : {Protocol.ChipId:X4}\n";
+                    if (!is_open)
+                    {
+                        Log.Value += "Bootloader起動に失敗";
+                    }
+                    else
+                    {
+                        //
+                        await Protocol.Send(EspBootloader.Command.READ_REG);
+                        Log.Value += Protocol.Error;
+                        //
+                        Log.Value += $"MAC addr: {Protocol.EfuseMacAddr:X12}\n";
+                        Log.Value += $"CHIP ID : {Protocol.ChipId:X4}\n";
+                    }
                 }
             }
             catch (Exception ex)
