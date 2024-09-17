@@ -118,7 +118,7 @@ namespace esptool_cs.Serial
             var _ = serialPort.ReadExisting();
         }
 
-        public async Task<RecieveResult> Run(TimeoutMode timeoutmode = TimeoutMode.Immediate)
+        public async Task<RecieveResult> Run(int rxtimeout = -1, TimeoutMode timeoutmode = TimeoutMode.Immediate)
         {
             // 通信プロトコル起動
             // Stop()するまでデータ受信やタイムアウト、それらに付随する処理を継続する。
@@ -126,6 +126,7 @@ namespace esptool_cs.Serial
 
             try
             {
+                if (rxtimeout != -1) RxTimeout = rxtimeout;
                 timeoutMode = timeoutmode;
                 CancelTokenSource = new CancellationTokenSource();
                 InitBeforeTaskStart();

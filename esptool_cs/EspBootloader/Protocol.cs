@@ -34,6 +34,10 @@ namespace esptool_cs.EspBootloader
         public string Header { get; set; }
         public string Error { get; set; }
 
+        //
+        static int RetryCountSync = 5;
+        static int TimeoutSync = 500;
+
         public Protocol()
         {
             var cmd = CommandHelper.CommandConvertTable[0];
@@ -53,6 +57,8 @@ namespace esptool_cs.EspBootloader
 
         public async Task<bool> Open(string port)
         {
+            if (serialPort.IsOpen) serialPort.Close();
+
             // COMポートを開く
             serialPort.PortName = port;
             serialPort.Open();
@@ -76,6 +82,7 @@ namespace esptool_cs.EspBootloader
             // 
             if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
             {
+                serialPort.Close();
                 Error = "Bootloader起動に失敗";
             }
 
@@ -92,22 +99,6 @@ namespace esptool_cs.EspBootloader
 
         public async Task<bool> Send(Command cmd)
         {
-            // CommandPacket作成、送信
-            respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
-            // SYNC実行
-            commandPacket.SetSync();
-            serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
-            // ResponsePacket待機
-            await reciever.Run();
-            reciever.Discard();
-            if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
-            {
-                Error = "初期通信(SYNC)に失敗。";
-                return false;
-            }
-
-            await Task.Delay(100);
-
             // Chip情報取得
             respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
             commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_0_REG);
@@ -133,6 +124,40 @@ namespace esptool_cs.EspBootloader
             }
             EfuseMacAddr |= ((UInt64)(respAnlyzr.Packet.Value & 0x0000FFFF) << 32);
             ChipId = (UInt16)respAnlyzr.Packet.Value;
+
+            return true;
+        }
+
+        public async Task<bool> SendSync()
+        {
+            // CommandPacket作成、送信
+            respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
+            // SYNCコマンド作成
+            commandPacket.SetSync();
+
+            // SYNC送信
+            for (int i=0; i<RetryCountSync; i++)
+            {
+                // 送信
+                serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
+                // 応答待機
+                await reciever.Run(TimeoutSync);
+                // 受信バッファクリア
+                reciever.Discard();
+                // 受信結果チェック
+                // 受信成功で終了、失敗したらリトライ
+                if (respAnlyzr.Result == Serial.RecieveResult.Match)
+                {
+                    break;
+                }
+            }
+
+            // 最終的に受信失敗ならError通知
+            if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
+            {
+                Error = "初期通信(SYNC)に失敗。";
+                return false;
+            }
 
             return true;
         }

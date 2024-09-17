@@ -79,33 +79,53 @@ namespace esptool_cs
         {
             try
             {
-                if (ComPortsSelectedIndex.Value >= 0)
+                bool result;
+
+                // COMポートが選択されていない場合は異常終了
+                if (ComPortsSelectedIndex.Value < 0)
                 {
-                    var port = ComPorts[ComPortsSelectedIndex.Value];
-                    var is_open = await Protocol.Open(port.ComPort);
-                    //
+                    Log.Value += "COMポートが選択されていません\n";
+                    return;
+                }
+
+                // COMポート取得
+                var port = ComPorts[ComPortsSelectedIndex.Value];
+                // Bootloader接続
+                result = await Protocol.Open(port.ComPort);
+                if (!result)
+                {
+                    // 異常メッセージを出力して終了
+                    Log.Value += Protocol.Error;
+                    Log.Value += "\n";
+                    return;
+                }
+                else
+                {
+                    // Bootloader接続時の受信内容を出力
                     Log.Value += Protocol.Header;
-                    //
-                    if (!is_open)
-                    {
-                        Log.Value += Protocol.Error;
-                        Log.Value += "\n";
-                    }
-                    else
-                    {
-                        //
-                        var is_init = await Protocol.Send(EspBootloader.Command.READ_REG);
-                        if (is_init)
-                        {
-                            Log.Value += $"MAC addr: {Protocol.EfuseMacAddr:X12}\n";
-                            Log.Value += $"CHIP ID : {Protocol.ChipId:X4}\n";
-                        }
-                        else
-                        {
-                            Log.Value += Protocol.Error;
-                            Log.Value += "\n";
-                        }
-                    }
+                }
+
+                // SYNC送信
+                result = await Protocol.SendSync();
+                if (!result)
+                {
+                    // 異常メッセージを出力して終了
+                    Log.Value += Protocol.Error;
+                    Log.Value += "\n";
+                    return;
+                }
+
+                //
+                var is_init = await Protocol.Send(EspBootloader.Command.READ_REG);
+                if (is_init)
+                {
+                    Log.Value += $"MAC addr: {Protocol.EfuseMacAddr:X12}\n";
+                    Log.Value += $"CHIP ID : {Protocol.ChipId:X4}\n";
+                }
+                else
+                {
+                    Log.Value += Protocol.Error;
+                    Log.Value += "\n";
                 }
             }
             catch (Exception ex)
