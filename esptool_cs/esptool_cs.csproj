@@ -60,10 +60,10 @@
     <Compile Include="EspBootloader\Command.cs" />
     <Compile Include="EspBootloader\CommandPacket.cs" />
     <Compile Include="EspBootloader\Protocol.cs" />
-    <Compile Include="EspBootloader\ResponsePacket.cs" />
+    <Compile Include="EspBootloader\ProtocolPacket.cs" />
     <Compile Include="EspBootloader\Reset.cs" />
     <Compile Include="MainWindowViewModel.cs" />
-    <Compile Include="Serial\Reciever.cs" />
+    <Compile Include="Serial\ProtocolHelper.cs" />
     <Compile Include="Utility\BindableBase.cs" />
     <Compile Include="Utility\CycleTimer.cs" />
     <Compile Include="Utility\WindowsApi.cs" />

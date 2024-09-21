@@ -25,7 +25,7 @@ namespace esptool_cs.EspBootloader
         CommandPacket commandPacket;
         // 受信解析
         ResponseAnalyzer respAnlyzr;
-        Serial.Reciever<ResponseAnalyzer> reciever;
+        Serial.ProtocolHelper<ResponseAnalyzer> protocol;
 
         // ESP32情報
         public UInt64 EfuseMacAddr;
@@ -49,7 +49,7 @@ namespace esptool_cs.EspBootloader
             //
             respAnlyzr = new ResponseAnalyzer();
             // 受信解析
-            reciever = new Serial.Reciever<ResponseAnalyzer>(serialPort, respAnlyzr);
+            protocol = new Serial.ProtocolHelper<ResponseAnalyzer>(serialPort, respAnlyzr);
 
             //
             EfuseMacAddr = 0;
@@ -66,21 +66,21 @@ namespace esptool_cs.EspBootloader
             // USB-JTAG方式でBootloader起動トライ
             await Reset.RunBootloaderUsbJtag(serialPort);
             // Header取得
-            respAnlyzr.Init(ResponseAnalyzer.Mode.Header);
-            await reciever.Run();
+            respAnlyzr.Init();
+            await protocol.Run();
 
-            // タイムアウトが発生したらBootloader起動できていない
-            if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
+            // 受信データ無し(タイムアウトが発生)の場合、Bootloader起動できていない
+            if (respAnlyzr.RecieveType != RecieveType.Header)
             {
                 // Classic方式でBootloader起動トライ
                 await Reset.RunBootloaderClassic(serialPort);
                 // Header取得
-                respAnlyzr.Init(ResponseAnalyzer.Mode.Header);
-                await reciever.Run();
+                respAnlyzr.Init();
+                await protocol.Run();
             }
 
             // 
-            if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
+            if (respAnlyzr.RecieveType != RecieveType.Header)
             {
                 serialPort.Close();
                 Error = "Bootloader起動に失敗";
@@ -88,7 +88,7 @@ namespace esptool_cs.EspBootloader
 
             Header = respAnlyzr.Header;
 
-            return respAnlyzr.Result == Serial.RecieveResult.Match;
+            return respAnlyzr.RecieveType == RecieveType.Header;
         }
 
         public async Task Close()
@@ -97,27 +97,37 @@ namespace esptool_cs.EspBootloader
             serialPort.Close();
         }
 
+        public async Task Discard()
+        {
+            // 読み捨て処理
+            do
+            {
+                await protocol.Run();
+            } while (respAnlyzr.RecieveType != RecieveType.None);
+        }
+
+
         public async Task<bool> Send(Command cmd)
         {
             // Chip情報取得
-            respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
+            respAnlyzr.Init();
             commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_0_REG);
             serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
-            await reciever.Run();
-            reciever.Discard();
-            if (respAnlyzr.HasError)
+            await protocol.Run();
+            await Discard();
+            if (respAnlyzr.RecieveType != RecieveType.Protocol || respAnlyzr.Packet.Command != Command.READ_REG)
             {
                 Error = respAnlyzr.Error;
                 return false;
             }
             EfuseMacAddr = respAnlyzr.Packet.Value;
 
-            respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
+            respAnlyzr.Init();
             commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_1_REG);
             serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
-            await reciever.Run();
-            reciever.Discard();
-            if (respAnlyzr.HasError)
+            await protocol.Run();
+            await Discard();
+            if (respAnlyzr.RecieveType != RecieveType.Protocol || respAnlyzr.Packet.Command != Command.READ_REG)
             {
                 Error = respAnlyzr.Error;
                 return false;
@@ -130,8 +140,10 @@ namespace esptool_cs.EspBootloader
 
         public async Task<bool> SendSync()
         {
+            bool success = false;
+
             // CommandPacket作成、送信
-            respAnlyzr.Init(ResponseAnalyzer.Mode.Protocol);
+            respAnlyzr.Init();
             // SYNCコマンド作成
             commandPacket.SetSync();
 
@@ -141,19 +153,20 @@ namespace esptool_cs.EspBootloader
                 // 送信
                 serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
                 // 応答待機
-                await reciever.Run(TimeoutSync);
+                await protocol.Run(TimeoutSync);
                 // 受信バッファクリア
-                reciever.Discard();
+                await Discard();
                 // 受信結果チェック
                 // 受信成功で終了、失敗したらリトライ
-                if (respAnlyzr.Result == Serial.RecieveResult.Match)
+                if (respAnlyzr.RecieveType == RecieveType.Protocol && respAnlyzr.Packet.Command == Command.SYNC)
                 {
+                    success = true;
                     break;
                 }
             }
 
             // 最終的に受信失敗ならError通知
-            if (respAnlyzr.Result == Serial.RecieveResult.Timeout)
+            if (!success)
             {
                 Error = "初期通信(SYNC)に失敗。";
                 return false;

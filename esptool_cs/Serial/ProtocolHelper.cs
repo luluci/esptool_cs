@@ -16,6 +16,7 @@ namespace esptool_cs.Serial
         Empty,
         Match,
         Timeout,
+        IntervalTimeout,    // バイト間タイムアウト
         Cancel,
     }
 
@@ -29,14 +30,12 @@ namespace esptool_cs.Serial
         public int RxBuffOffset { get; set; }
         public int RxBuffTgtPos { get; set; }
         public DateTime TimeStamp { get; set; }
-        public bool IsRecieving { get; set; }
 
         public RecvInfo()
         {
             RxBuff = new byte[BuffSize];
             RxBuffOffset = 0;
             RxBuffTgtPos = 0;
-            IsRecieving = false;
         }
 
         public void Init()
@@ -44,21 +43,13 @@ namespace esptool_cs.Serial
             // 受信バッファはリセットして受信開始する
             RxBuffOffset = 0;
             RxBuffTgtPos = 0;
-            IsRecieving = false;
         }
 
         public void Restart()
         {
             // 受信バッファ残りを継続して解析を再開する
             Result = RecieveResult.Empty;
-            IsRecieving = false;
         }
-    }
-
-    internal enum TimeoutMode
-    {
-        Immediate,  // 受信待機を始めたら即時カウント開始
-        AnyRecieve, // 何かしらデータ受信後にカウント開始
     }
 
     internal interface IAnalyzer
@@ -69,7 +60,7 @@ namespace esptool_cs.Serial
         bool CheckResult(ref RecvInfo rx);
     }
 
-    internal class Reciever<T> : BindableBase
+    internal class ProtocolHelper<T> : BindableBase
         where T : IAnalyzer
     {
         public ReactivePropertySlim<string> State {  get; set; }
@@ -77,15 +68,20 @@ namespace esptool_cs.Serial
         SerialPort serialPort;
         bool IsRunning;
         int PollingCycle;
-        int RxTimeout;
+
+        // タイムアウト判定
+        int RxCompleteTimeout;//受信完了タイムアウト:一定期間内に意図したデータを受信できなかった
+        int RxIntervalTimeout;//バイト間タイムアウト:最後の受信から一定期間内に受信が無かった
+
+        // 時間計測タイマ
         Utility.CycleTimer PollingTimer = new Utility.CycleTimer();
-        Utility.CycleTimer RxBeginTimer = new Utility.CycleTimer();
-        Utility.CycleTimer RxEndTimer = new Utility.CycleTimer();
+        Utility.CycleTimer RxCompleteTimer = new Utility.CycleTimer();
+        Utility.CycleTimer RxIntervalTimer = new Utility.CycleTimer();
+        // 中断token
         CancellationTokenSource CancelTokenSource;
 
         // 受信解析器
         T rxAnlzr;
-        TimeoutMode timeoutMode;
 
         // 受信ハンドラ
         bool HasRecieve;
@@ -93,7 +89,7 @@ namespace esptool_cs.Serial
         // 解析結果
         public RecvInfo RecvData;
 
-        public Reciever(SerialPort serial, T rxanlyzer) 
+        public ProtocolHelper(SerialPort serial, T rxanlyzer) 
         {
             State = new ReactivePropertySlim<string>("test");
 
@@ -103,22 +99,15 @@ namespace esptool_cs.Serial
             serialPort.DataReceived += Serial_DataReceived;
 
             PollingCycle = 100;
-            RxTimeout = 1000;
+            RxCompleteTimeout = 100;
+            RxIntervalTimeout = 100;
 
             // 受信解析器
             rxAnlzr = rxanlyzer;
             RecvData = new RecvInfo();
-            timeoutMode = TimeoutMode.Immediate;
         }
 
-        public void Discard()
-        {
-            // 読み捨て処理
-            RecvData.Init();
-            var _ = serialPort.ReadExisting();
-        }
-
-        public async Task<RecieveResult> Run(int rxtimeout = -1, TimeoutMode timeoutmode = TimeoutMode.Immediate)
+        public async Task<RecieveResult> Run(int compTimeout = -1, int itvlTimeout = -1)
         {
             // 通信プロトコル起動
             // Stop()するまでデータ受信やタイムアウト、それらに付随する処理を継続する。
@@ -126,8 +115,10 @@ namespace esptool_cs.Serial
 
             try
             {
-                if (rxtimeout != -1) RxTimeout = rxtimeout;
-                timeoutMode = timeoutmode;
+                // タイムアウト設定
+                if (compTimeout != -1) RxCompleteTimeout = compTimeout;
+                if (itvlTimeout != -1) RxIntervalTimeout = itvlTimeout;
+                // 中断token作成
                 CancelTokenSource = new CancellationTokenSource();
                 InitBeforeTaskStart();
 
@@ -166,12 +157,9 @@ namespace esptool_cs.Serial
         {
             // 受信結果バッファをリスタート
             RecvData.Restart();
-            //
-            if (timeoutMode == TimeoutMode.Immediate)
-            {
-                RecvData.IsRecieving = true;
-                RxBeginTimer.Start();
-            }
+            // 受信処理開始
+            RxCompleteTimer.Start();
+            RxIntervalTimer.Stop();
         }
 
         public async Task PollingEvent(CancellationToken cancel)
@@ -204,12 +192,19 @@ namespace esptool_cs.Serial
         public bool PollingRecv()
         {
             // タイムアウト判定
-            // 何かしらのデータ受信後、指定時間経過でタイムアウトする
-            if (RecvData.IsRecieving)
+            // 受信完了タイムアウト
+            if (RxCompleteTimer.WaitForMsec(RxCompleteTimeout) <= 0)
             {
-                if (RxBeginTimer.WaitForMsec(RxTimeout) <= 0)
+                RecvData.Result = RecieveResult.Timeout;
+                return true;
+            }
+            // バイト間タイムアウト
+            // 何かしらのデータ受信後、指定時間経過でタイムアウトする
+            if (RxIntervalTimer.IsRunning)
+            {
+                if (RxIntervalTimer.WaitForMsec(RxIntervalTimeout) <= 0)
                 {
-                    RecvData.Result = RecieveResult.Timeout;
+                    RecvData.Result = RecieveResult.IntervalTimeout;
                     return true;
                 }
             }
@@ -217,14 +212,9 @@ namespace esptool_cs.Serial
             // 受信バッファ読み出し
             if (HasRecieve || RecvData.RxBuffOffset != RecvData.RxBuffTgtPos || serialPort?.BytesToRead > 0)
             {
-                // 受信開始した時間を記憶
-                if (!RecvData.IsRecieving)
-                {
-                    RecvData.IsRecieving = true;
-                    RxBeginTimer.Start();
-                }
                 // 最後に受信した時間を更新
-                RxEndTimer.Start();
+                // 厳密にはHasRecieveのときのみ
+                RxIntervalTimer.Start();
 
                 try
                 {
@@ -256,7 +246,7 @@ namespace esptool_cs.Serial
                     if (result)
                     {
                         RecvData.Result = RecieveResult.Match;
-                        RecvData.TimeStamp = RxEndTimer.GetTime();
+                        RecvData.TimeStamp = RxIntervalTimer.GetTime();
                         return true;
                     }
                 }

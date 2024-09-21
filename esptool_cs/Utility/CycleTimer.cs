@@ -9,21 +9,28 @@ namespace esptool_cs.Utility
     public class CycleTimer
     {
         DateTime prev;
-
+        public bool IsRunning { get; set; }
 
         public CycleTimer()
         {
-            Start();
+            IsRunning = false;
         }
 
         public void Start()
         {
             prev = DateTime.Now;
+            IsRunning = true;
         }
 
         public void StartBy(DateTime dt)
         {
             prev = dt;
+            IsRunning = true;
+        }
+
+        public void Stop()
+        {
+            IsRunning = false;
         }
 
         public DateTime GetTime()

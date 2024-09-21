@@ -4,10 +4,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using static esptool_cs.EspBootloader.ResponseAnalyzer;
 
 namespace esptool_cs.EspBootloader
 {
-    internal class ResponsePacket
+    internal class ProtocolPacket
     {
         const int DataLength = 1024;
 
@@ -20,7 +21,7 @@ namespace esptool_cs.EspBootloader
         //
         public byte[] Data { get; set; }
 
-        public ResponsePacket() 
+        public ProtocolPacket() 
         {
             Command = Command.None;
             Size = 0;
@@ -36,15 +37,29 @@ namespace esptool_cs.EspBootloader
         }
     }
 
+    internal enum RecieveType
+    {
+        None,   // 受信データなし
+
+        //
+        Ascii,  // 未定義ASCIIデータ受信
+        Binary, // 未定義バイナリデータ受信
+
+        // 確定データ
+        Header, // Bootloader接続時の通知ASCII受信
+        Protocol,   // SerialProtocolデータ受信
+
+    }
+
     internal class ResponseAnalyzer : Serial.IAnalyzer
     {
-        public ResponsePacket Packet { get; set; }
+        public ProtocolPacket Packet { get; set; }
         StringBuilder msgBuffer;
         public string Header { get; set; }
         public string Error { get; set; }
         public bool HasError { get; set; }
         //
-        public RecieveResult Result {  get; set; }
+        public RecieveType RecieveType { get; set; }
 
         // 解析情報
         // 解析モード
@@ -58,8 +73,10 @@ namespace esptool_cs.EspBootloader
         enum RecvStateWaitFor
         {
             //
+            FirstByte,
+
+            //
             Header,
-            HeaderDummyRead,//読み捨て
             //
             StartByte,
             Direction,
@@ -68,7 +85,6 @@ namespace esptool_cs.EspBootloader
             Value,
             Data,
             StopByte,
-            DummyRead,  //読み捨て
 
             //
             Timeout,    // 不正データ受信でタイムアウトするまで読み捨てる
@@ -80,36 +96,29 @@ namespace esptool_cs.EspBootloader
         public ResponseAnalyzer()
         {
             // 受信データバッファ
-            Packet = new ResponsePacket();
+            Packet = new ProtocolPacket();
 
-            Init(Mode.Header);
+            Init();
         }
 
-        public void Init(Mode mode_)
+        public void Init()
         {
-            mode = mode_;
             recvCount = 0;
             HasError = false;
             msgBuffer = new StringBuilder();
-
-            switch (mode)
-            {
-                case Mode.Protocol:
-                    // 受信待ち状態初期化:Direction待機状態
-                    waitFor = RecvStateWaitFor.StartByte;
-                    //
-                    Packet.Init();
-                    break;
-
-                case Mode.Header:
-                default:
-                    waitFor = RecvStateWaitFor.Header;
-                    break;
-            }
+            Packet.Init();
+            RecieveType = RecieveType.None;
+            waitFor = RecvStateWaitFor.FirstByte;
         }
 
         public bool Analyze(ref RecvInfo rx)
         {
+            // 最初の受信データによってバイナリかASCIIか判定する
+            if (waitFor == RecvStateWaitFor.FirstByte)
+            {
+                AnalyzeRecvMode(ref rx);
+            }
+
             switch (mode)
             {
                 case Mode.Header:
@@ -125,7 +134,6 @@ namespace esptool_cs.EspBootloader
 
         public bool CheckResult(ref RecvInfo rx)
         {
-            Result = rx.Result;
             switch (rx.Result)
             {
                 case RecieveResult.Match:
@@ -154,27 +162,37 @@ namespace esptool_cs.EspBootloader
             return false;
         }
 
+        private void AnalyzeRecvMode(ref RecvInfo rx)
+        {
+            // 最初のバイトを取得
+            var firstByte = rx.RxBuff[rx.RxBuffTgtPos];
+            // 0xC0の場合はBootloaderのSerial Protocolのコマンド
+            // それ以外はASCIIと見なすがチェックするか？
+            if (firstByte == 0xC0)
+            {
+                mode = Mode.Protocol;
+                RecieveType = RecieveType.Binary;
+                waitFor = RecvStateWaitFor.StartByte;
+            }
+            else
+            {
+                mode = Mode.Header;
+                RecieveType = RecieveType.Ascii;
+                waitFor = RecvStateWaitFor.Header;
+            }
+        }
+
         private bool AnalyzeHeader(ref RecvInfo rx)
         {
             bool recieved = false;
 
-            switch (waitFor)
+            var str = System.Text.Encoding.UTF8.GetString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
+            rx.RxBuffTgtPos = rx.RxBuffOffset;
+            msgBuffer.Append(str);
+            if (str.IndexOf("waiting for download") != -1)
             {
-                case RecvStateWaitFor.Header:
-                    var str = System.Text.Encoding.UTF8.GetString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
-                    rx.RxBuffTgtPos = rx.RxBuffOffset;
-                    msgBuffer.Append(str);
-                    if (str.IndexOf("waiting for download") != -1)
-                    {
-                        waitFor = RecvStateWaitFor.HeaderDummyRead;
-                        recieved = true;
-                    }
-                    break;
-
-                case RecvStateWaitFor.HeaderDummyRead:
-                default:
-                    // タイムアウトするまで読み捨て
-                    break;
+                RecieveType = RecieveType.Header;
+                recieved = true;
             }
 
             return recieved;
@@ -279,13 +297,20 @@ namespace esptool_cs.EspBootloader
                         if (data == 0xC0)
                         {
                             // 1パケット受信完了
+                            RecieveType = RecieveType.Protocol;
                             recieved = true;
                         }
                         break;
 
                     case RecvStateWaitFor.Timeout:
                     default:
-                        // 読み捨て
+                        // 未定義データ
+                        // 0xC0はデータの切れ目と見なす
+                        if (data == 0xC0)
+                        {
+                            // 1パケット受信完了
+                            recieved = true;
+                        }
                         break;
                 }
             }
