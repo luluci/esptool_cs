@@ -28,8 +28,9 @@ namespace esptool_cs
         // ESP Serial Bootloader Protocol
         public EspBootloader.Protocol Protocol { get; set; }
 
-        // Log
-        public ReactivePropertySlim<string> Log {  get; set; }
+        // Logコンテナ参照
+        public ReactiveCollection<string> ProtocolLog { get; set; }
+        public ReactiveCollection<string> RawLog { get; set; }
 
         public MainWindowViewModel()
         {
@@ -56,8 +57,13 @@ namespace esptool_cs
             .AddTo(Disposables);
 
             // Log
-            Log = new ReactivePropertySlim<string>("");
-            Log.AddTo(Disposables);
+            ProtocolLog = Log.ProtocolLog.Data;
+            RawLog = Log.RawLog.Data;
+
+            //ProtocolLog.Add("test1");
+            //ProtocolLog.Add("test2aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+            //RawLog.Add("test3");
+            //RawLog.Add("test4");
         }
 
         public void Init()
@@ -84,7 +90,7 @@ namespace esptool_cs
                 // COMポートが選択されていない場合は異常終了
                 if (ComPortsSelectedIndex.Value < 0)
                 {
-                    Log.Value += "COMポートが選択されていません\n";
+                    ProtocolLog.Add("COMポートが選択されていません");
                     return;
                 }
 
@@ -95,14 +101,13 @@ namespace esptool_cs
                 if (!result)
                 {
                     // 異常メッセージを出力して終了
-                    Log.Value += Protocol.Error;
-                    Log.Value += "\n";
+                    ProtocolLog.Add(Protocol.Error);
                     return;
                 }
                 else
                 {
                     // Bootloader接続時の受信内容を出力
-                    Log.Value += Protocol.Header;
+                    ProtocolLog.Add(Protocol.Header);
                 }
 
                 // SYNC送信
@@ -110,8 +115,7 @@ namespace esptool_cs
                 if (!result)
                 {
                     // 異常メッセージを出力して終了
-                    Log.Value += Protocol.Error;
-                    Log.Value += "\n";
+                    ProtocolLog.Add(Protocol.Error);
                     return;
                 }
 
@@ -119,13 +123,12 @@ namespace esptool_cs
                 var is_init = await Protocol.Send(EspBootloader.Command.READ_REG);
                 if (is_init)
                 {
-                    Log.Value += $"MAC addr: {Protocol.EfuseMacAddr:X12}\n";
-                    Log.Value += $"CHIP ID : {Protocol.ChipId:X4}\n";
+                    ProtocolLog.Add($"MAC addr: {Protocol.EfuseMacAddr:X12}");
+                    ProtocolLog.Add($"CHIP ID : {Protocol.ChipId:X4}");
                 }
                 else
                 {
-                    Log.Value += Protocol.Error;
-                    Log.Value += "\n";
+                    ProtocolLog.Add(Protocol.Error);
                 }
             }
             catch (Exception ex)
@@ -136,8 +139,6 @@ namespace esptool_cs
             {
                 await Protocol.Close();
             }
-
-            Log.Value += "fin!";
         }
     }
 }

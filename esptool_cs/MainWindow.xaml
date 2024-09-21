@@ -11,6 +11,35 @@
         <local:MainWindowViewModel />
     </Window.DataContext>
     <Window.Resources>
+        <Style x:Key="LogListStyle" TargetType="{x:Type ListBox}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="ItemsPanel">
+                <Setter.Value>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel />
+                    </ItemsPanelTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate>
+                        <ItemsPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="ItemTemplate">
+                <Setter.Value>
+                    <DataTemplate>
+                        <TextBox IsReadOnly="True" Text="{Binding Mode=OneWay}">
+                            <TextBox.Style>
+                                <Style>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                    </DataTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
     <Grid>
         <Grid.Background>
@@ -76,13 +105,36 @@
                 </TabItem>
             </TabControl>
         </Grid>
-        <Grid Grid.Row="6"/>
+        <GridSplitter Grid.Row="6" HorizontalAlignment="Stretch" Background="DarkGray" Margin="0,1" />
         <Grid Grid.Row="7">
-            <Border Margin="1">
-                <ScrollViewer>
-                    <TextBox Text="{Binding Log.Value}"/>
-                </ScrollViewer>
-            </Border>
+            <TabControl TabStripPlacement="Bottom">
+                <TabItem Header="Protocol Log">
+                    <ScrollViewer x:Name="log_scrl" HorizontalScrollBarVisibility="Disabled">
+                        <ListBox x:Name="log" ItemsSource="{Binding ProtocolLog}" Style="{StaticResource LogListStyle}">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="コピー" Command="{Binding OnClickLogCopy}" CommandParameter="{Binding RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}, Path=PlacementTarget.SelectedItem}"/>
+                                    <Separator/>
+                                    <MenuItem Header="ログクリア" Command="{Binding OnClickLogClear}"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+                    </ScrollViewer>
+                </TabItem> 
+                <TabItem Header="RawData Log">
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                        <ListBox ItemsSource="{Binding RawLog}" Style="{StaticResource LogListStyle}">
+                            <ListBox.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="コピー" Command="{Binding OnClickLogCopy}" CommandParameter="{Binding RelativeSource={RelativeSource AncestorType={x:Type ContextMenu}}, Path=PlacementTarget.SelectedItem}"/>
+                                    <Separator/>
+                                    <MenuItem Header="ログクリア" Command="{Binding OnClickLogClear}"/>
+                                </ContextMenu>
+                            </ListBox.ContextMenu>
+                        </ListBox>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
         </Grid>
     </Grid>
 </Window>

@@ -62,6 +62,7 @@
     <Compile Include="EspBootloader\Protocol.cs" />
     <Compile Include="EspBootloader\ProtocolPacket.cs" />
     <Compile Include="EspBootloader\Reset.cs" />
+    <Compile Include="Log.cs" />
     <Compile Include="MainWindowViewModel.cs" />
     <Compile Include="Serial\ProtocolHelper.cs" />
     <Compile Include="Utility\BindableBase.cs" />
