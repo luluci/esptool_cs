@@ -27,6 +27,7 @@
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
+            <!--
             <Setter Property="ItemTemplate">
                 <Setter.Value>
                     <DataTemplate>
@@ -39,6 +40,7 @@
                     </DataTemplate>
                 </Setter.Value>
             </Setter>
+            -->
         </Style>
     </Window.Resources>
     <Grid>
@@ -109,7 +111,7 @@
         <Grid Grid.Row="7">
             <TabControl TabStripPlacement="Bottom">
                 <TabItem Header="Protocol Log">
-                    <ScrollViewer x:Name="log_scrl" HorizontalScrollBarVisibility="Disabled">
+                    <ScrollViewer x:Name="log_scrl" HorizontalScrollBarVisibility="Auto">
                         <ListBox x:Name="log" ItemsSource="{Binding ProtocolLog}" Style="{StaticResource LogListStyle}">
                             <ListBox.ContextMenu>
                                 <ContextMenu>
@@ -122,7 +124,7 @@
                     </ScrollViewer>
                 </TabItem> 
                 <TabItem Header="RawData Log">
-                    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto">
                         <ListBox ItemsSource="{Binding RawLog}" Style="{StaticResource LogListStyle}">
                             <ListBox.ContextMenu>
                                 <ContextMenu>
