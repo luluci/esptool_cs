@@ -54,6 +54,8 @@ namespace esptool_cs.Serial
 
     internal interface IAnalyzer
     {
+        // 受信開始時に解析状態を初期化する
+        void Init();
         // SerialPortからのデータ取り出しのためにバッファを使い捨てにしてると諸々気になるため
         // 受信データ管理データを使いまわすためにRxDataを介してやりとりを行う。
         bool Analyze(ref RecvInfo rx);
@@ -157,6 +159,7 @@ namespace esptool_cs.Serial
         {
             // 受信結果バッファをリスタート
             RecvData.Restart();
+            rxAnlzr.Init();
             // 受信処理開始
             RxCompleteTimer.Start();
             RxIntervalTimer.Stop();

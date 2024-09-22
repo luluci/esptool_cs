@@ -100,38 +100,49 @@ namespace esptool_cs.EspBootloader
         public async Task Discard()
         {
             // 読み捨て処理
+            respAnlyzr.StartDiscard();
+            // 受信タイムアウトまで繰り返す
             do
             {
                 await protocol.Run();
+                if (respAnlyzr.RecieveType != RecieveType.None)
+                {
+                    Log.RawLog.Data.Add($"[Discard] {respAnlyzr.ToString()}");
+                }
             } while (respAnlyzr.RecieveType != RecieveType.None);
+            //
+            respAnlyzr.StopDiscard();
         }
 
 
-        public async Task<bool> Send(Command cmd)
+        public async Task<bool> GetHardwareInfo()
         {
+            bool success = false;
+
             // Chip情報取得
-            respAnlyzr.Init();
+            // READ_REG作成
             commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_0_REG);
-            serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
-            await protocol.Run();
-            await Discard();
-            if (respAnlyzr.RecieveType != RecieveType.Protocol || respAnlyzr.Packet.Command != Command.READ_REG)
+            // SYNC送信
+            success = await SendPacket(500);
+            // 通信結果
+            if (!success)
             {
                 Error = respAnlyzr.Error;
                 return false;
             }
+            // 
             EfuseMacAddr = respAnlyzr.Packet.Value;
 
-            respAnlyzr.Init();
             commandPacket.SetReadReg((UInt32)EspRegMap.EFUSE_RD_MAC_SPI_SYS_1_REG);
-            serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
-            await protocol.Run();
-            await Discard();
-            if (respAnlyzr.RecieveType != RecieveType.Protocol || respAnlyzr.Packet.Command != Command.READ_REG)
+            // SYNC送信
+            success = await SendPacket(500);
+            // 通信結果
+            if (!success)
             {
                 Error = respAnlyzr.Error;
                 return false;
             }
+            //
             EfuseMacAddr |= ((UInt64)(respAnlyzr.Packet.Value & 0x0000FFFF) << 32);
             ChipId = (UInt16)respAnlyzr.Packet.Value;
 
@@ -142,37 +153,60 @@ namespace esptool_cs.EspBootloader
         {
             bool success = false;
 
-            // CommandPacket作成、送信
-            respAnlyzr.Init();
             // SYNCコマンド作成
             commandPacket.SetSync();
-
             // SYNC送信
-            for (int i=0; i<RetryCountSync; i++)
-            {
-                // 送信
-                serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
-                // 応答待機
-                await protocol.Run(TimeoutSync);
-                // 受信バッファクリア
-                await Discard();
-                // 受信結果チェック
-                // 受信成功で終了、失敗したらリトライ
-                if (respAnlyzr.RecieveType == RecieveType.Protocol && respAnlyzr.Packet.Command == Command.SYNC)
-                {
-                    success = true;
-                    break;
-                }
-            }
-
-            // 最終的に受信失敗ならError通知
+            success = await SendPacket(TimeoutSync, RetryCountSync);
+            // 通信結果
             if (!success)
             {
                 Error = "初期通信(SYNC)に失敗。";
-                return false;
             }
 
-            return true;
+            return success;
+        }
+
+        private async Task<bool> SendPacket(int timeout, int retry = 1)
+        {
+            bool success = false;
+
+            // Packet送信
+            // Packetを作成して空本関数をコールする
+            for (int i = 0; i < retry && !success; i++)
+            {
+                // 送信
+                serialPort.Write(commandPacket.Packet, 0, commandPacket.PacketLength);
+                // 送信ログ
+                Log.RawLog.Data.Add($"[Tx] {commandPacket.ToString()}");
+
+                // 受信処理
+                // 何らかの受信がある限り繰り返す
+                do
+                {
+                    // 応答待機
+                    await protocol.Run(timeout);
+                    // 受信結果チェック
+                    // 受信成功で終了、失敗したらリトライ
+                    if (respAnlyzr.RecieveType == RecieveType.Protocol && respAnlyzr.Packet.Command == commandPacket.Command)
+                    {
+                        success = true;
+                    }
+                    // 応答ログ
+                    if (success)
+                    {
+                        Log.RawLog.Data.Add($"[Accept] {respAnlyzr.ToString()}");
+                    }
+                    else
+                    {
+                        Log.RawLog.Data.Add($"[Error] {respAnlyzr.ToString()}");
+                    }
+                } while (!success && respAnlyzr.RecieveType != RecieveType.None);
+
+                // 受信バッファクリア
+                await Discard();
+            }
+
+            return success;
         }
     }
 }

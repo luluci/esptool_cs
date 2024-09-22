@@ -120,7 +120,7 @@ namespace esptool_cs
                 }
 
                 //
-                var is_init = await Protocol.Send(EspBootloader.Command.READ_REG);
+                var is_init = await Protocol.GetHardwareInfo();
                 if (is_init)
                 {
                     ProtocolLog.Add($"MAC addr: {Protocol.EfuseMacAddr:X12}");

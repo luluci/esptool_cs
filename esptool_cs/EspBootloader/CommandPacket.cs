@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Markup;
 
 namespace esptool_cs.EspBootloader
 {
@@ -132,6 +133,11 @@ namespace esptool_cs.EspBootloader
         public void MakePacketImpl(int packetOffset, byte[] data, int len)
         {
             Buffer.BlockCopy(data, 0, Packet, packetOffset, len);
+        }
+
+        public override string ToString()
+        {
+            return $"Command={Command.ToString()} Size={Size} Checksum={Checksum} Packet={Packet.ToString()}";
         }
     }
 }

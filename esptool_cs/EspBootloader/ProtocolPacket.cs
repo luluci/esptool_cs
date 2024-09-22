@@ -35,6 +35,11 @@ namespace esptool_cs.EspBootloader
             Size = 0;
             Value = 0;
         }
+
+        public override string ToString()
+        {
+            return $"Command={Command.ToString()} Size={Size} Value={Value} Data={Data.ToString()}";
+        }
     }
 
     internal enum RecieveType
@@ -54,12 +59,16 @@ namespace esptool_cs.EspBootloader
     internal class ResponseAnalyzer : Serial.IAnalyzer
     {
         public ProtocolPacket Packet { get; set; }
+        ProtocolPacket RecievePacket { get; set; }
+        ProtocolPacket DiscardPacket { get; set; }
         StringBuilder msgBuffer;
         public string Header { get; set; }
+        public string Log {  get; set; }
         public string Error { get; set; }
-        public bool HasError { get; set; }
         //
         public RecieveType RecieveType { get; set; }
+        //
+        public bool IsBufferEmpty { get; set; }
 
         // 解析情報
         // 解析モード
@@ -96,7 +105,9 @@ namespace esptool_cs.EspBootloader
         public ResponseAnalyzer()
         {
             // 受信データバッファ
-            Packet = new ProtocolPacket();
+            RecievePacket = new ProtocolPacket();
+            DiscardPacket = new ProtocolPacket();
+            Packet = RecievePacket;
 
             Init();
         }
@@ -104,11 +115,20 @@ namespace esptool_cs.EspBootloader
         public void Init()
         {
             recvCount = 0;
-            HasError = false;
             msgBuffer = new StringBuilder();
             Packet.Init();
             RecieveType = RecieveType.None;
             waitFor = RecvStateWaitFor.FirstByte;
+            IsBufferEmpty = false;
+        }
+
+        public void StartDiscard()
+        {
+            Packet = DiscardPacket;
+        }
+        public void StopDiscard()
+        {
+            Packet = RecievePacket;
         }
 
         public bool Analyze(ref RecvInfo rx)
@@ -141,25 +161,68 @@ namespace esptool_cs.EspBootloader
                     break;
             }
 
-            switch (mode)
+            //
+            if (rx.RxBuffOffset == rx.RxBuffTgtPos)
             {
-                case Mode.Header:
+                IsBufferEmpty = true;
+            }
+
+            //
+            switch (RecieveType)
+            {
+                case RecieveType.Header:
                     Header = msgBuffer.ToString();
+                    //Log = Header;
+                    break;
+
+                case RecieveType.Protocol:
+                    break;
+
+                case RecieveType.Ascii:
+                    //Log = msgBuffer.ToString();
+                    break;
+
+                case RecieveType.Binary:
+
+                    break;
+
+                case RecieveType.None:
+                    //Log = "";
                     break;
 
                 default:
+                    //Log = "<error unknown recieve>";
                     break;
             }
 
-            if (HasError)
-            {
-                Error = msgBuffer.ToString();
-            }
-
             // 受信情報初期化
-            //Init(mode);
+            //Init();
 
             return false;
+        }
+
+        public override string ToString()
+        {
+            switch (RecieveType)
+            {
+                case RecieveType.Header:
+                    return Header;
+
+                case RecieveType.Ascii:
+                    return msgBuffer.ToString();
+
+                case RecieveType.Protocol:
+                    return Packet.ToString();
+
+                case RecieveType.Binary:
+                    return Packet.Data.ToString();
+
+                case RecieveType.None:
+                    return "<Recieved NoData>";
+
+                default:
+                    return "<error unknown recieve>";
+            }
         }
 
         private void AnalyzeRecvMode(ref RecvInfo rx)
@@ -202,16 +265,6 @@ namespace esptool_cs.EspBootloader
         private bool AnalyzeProtocol(ref RecvInfo rx)
         {
             bool recieved = false;
-
-            // エラーチェック
-            // 先頭が 0xC0 以外のときはエラーメッセージとみなす
-            if (rx.RxBuff[0] != 0xC0)
-            {
-                var str = System.Text.Encoding.UTF8.GetString(rx.RxBuff, rx.RxBuffTgtPos, rx.RxBuffOffset);
-                msgBuffer.Append(str);
-                HasError = true;
-                return true;
-            }
 
             int pos;
             for (pos = rx.RxBuffTgtPos; !recieved && pos < rx.RxBuffOffset; pos++)
