@@ -38,7 +38,7 @@ namespace esptool_cs.EspBootloader
 
         public override string ToString()
         {
-            return $"Command={Command.ToString()} Size={Size} Value={Value} Data={Data.ToString()}";
+            return $"Command={Command.ToString()} Size={Size} Value={Value} Data={BitConverter.ToString(Data)}";
         }
     }
 

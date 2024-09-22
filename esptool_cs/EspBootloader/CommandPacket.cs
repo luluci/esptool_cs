@@ -137,7 +137,7 @@ namespace esptool_cs.EspBootloader
 
         public override string ToString()
         {
-            return $"Command={Command.ToString()} Size={Size} Checksum={Checksum} Packet={Packet.ToString()}";
+            return $"Command={Command.ToString()} Size={Size} Checksum={Checksum} Packet={BitConverter.ToString(Packet)}";
         }
     }
 }
