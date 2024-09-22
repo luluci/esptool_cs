@@ -1,5 +1,7 @@
-﻿using System;
+﻿using Reactive.Bindings;
+using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -37,7 +39,24 @@ namespace esptool_cs
 
         private void Window_ContentRendered(object sender, EventArgs e)
         {
-
+            {
+                if (this.ProtocolLog.Items is INotifyCollectionChanged log)
+                {
+                    log.CollectionChanged += (object isender, NotifyCollectionChangedEventArgs ie) =>
+                    {
+                        this.ProtocolLogScrollbar.ScrollToEnd();
+                    };
+                }
+            }
+            {
+                if (this.RawLog.Items is INotifyCollectionChanged log)
+                {
+                    log.CollectionChanged += (object isender, NotifyCollectionChangedEventArgs ie) =>
+                    {
+                        this.RawLogScrollbar.ScrollToEnd();
+                    };
+                }
+            }
         }
 
         private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
